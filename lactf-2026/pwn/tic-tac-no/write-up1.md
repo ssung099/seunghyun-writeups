@@ -1,17 +1,17 @@
 # tic-tac-no
 
 ## Summary
-This challenge provides a Linux CLI program with a out-of-bounds write vulnerability that allows user to modify variables.
+This challenge provides a Linux CLI program with an out-of-bounds write vulnerability that allows the user to modify variables.
 
 Artifacts:
-- `chall/chall`: vulnerable executablew program provided by the challenge authors
-- `chall/chall.c`:  vulnerable program surce code provided by challenge authors
+- `chall/chall`: vulnerable executable program provided by the challenge authors
+- `chall/chall.c`:  vulnerable program source code provided by challenge authors
 
 ## Context 
 
-The challenge has a provided domain and port, but it can also be ran locally using the provided executable. The program intends to be an unbeatable AI by making the most optimal move each time.
+The challenge has a provided domain and port, but it can also be run locally using the provided executable. The program intends to be an unbeatable AI by making the most optimal move each time.
 
-Upon running, the program starts a game of tic-tac-toe, prompting the user to input a row and column to make their move.
+Upon running, the program starts a game of tic-tac-toe, prompting the user to enter a row and column for their move.
 
 ```
 You want the flag? You'll have to beat me first!
@@ -25,35 +25,58 @@ Enter row #(1-3):
 ```
 
 ## Vulnerability
-The `chall` program contains a out-of-bound write vulnerability due to an improper check of index within `playerMove()` function.
+The `chall` program contains an out-of-bounds write vulnerability due to an improper check of the index within the `playerMove()` function.
 
 ```
-if(index >= 0 && index < 9 && board[index] != ' '){
-    printf("Invalid move.\n");
-} else {
-    board[index] = player; // Should be safe, given that the user cannot overwrite tiles on the board
-    break;
+void playerMove() {
+   int x, y;
+   do{
+      printf("Enter row #(1-3): ");
+      scanf("%d", &x);
+      printf("Enter column #(1-3): ");
+      scanf("%d", &y);
+      int index = (x-1)*3+(y-1);
+      if(index >= 0 && index < 9 && board[index] != ' '){
+         printf("Invalid move.\n");
+      }else{
+         board[index] = player; // Should be safe, given that the user cannot overwrite tiles on the board
+         break;
+      }
+   }while(1);
 }
 ```
 
-The program checks if a valid index is filled before allowing the user to write to the location. However, it doesn't provide a fail-safe way for invalid indicies.
+The program checks whether the index is within bounds and whether the selected tile is already occupied before rejecting the move. However, it doesn't properly handle invalid indices. 
 
-Therefore, we can use this to input a index that is out of the `board` buffer bound to write to the desired addresses.
+Consider an invalid `x` and `y` input such that `index` becomes negative. This would prompt the code to execute the `else` branch, writing to `board[index]` even though the input values are invalid. As a result, `board[index]` may reference memory outside the intended buffer bounds.
 
-On line 122 in `minimax()`, we can see that the computer writes to the board by setting `board[i] = computer`. By modifying the `char computer` variable to be `X`, we can make the computer to write `X`'s on the boards instead of `O`'s to help us win the game of tic-tac-toe.
+By modifying the `computer` variable to be `X`, we can make the computer write `X` instead of `O`, allowing us to win the game.
 
 ## Exploitation
-The exploit involves inputting an invalid row and column to get an index outside the buffer bound to write to an address of our choice.
+The exploit involves inputting an invalid row and column to get an index outside the buffer bounds to write to an address of our choice.
 
-By using `Binary Ninja`, we can calculate the offset between the addresses for `board` buffer and `computer` variable.
+Using `Binary Ninja`, we can calculate the offset between the addresses of the `board` buffer and the `computer` variable.
 
 ![screenshot](./tic-tac-no_binaryninja.png)
 
-We can then calculate the offset between `board` (at `0x404068`) and `computer` (at `0x404051`) which turns out to be `-0x17` or -23 in decimal.
+From the screenshot, we can see that `board` is located at `0x00404068` and `computer` is located at `0x00404051`. By taking the difference between these two addresses, we can calculate the offset between the variables, which turns out to be `-0x17` (-23 in decimal).
 
-Using the index calculation `index = (x - 1) * 3 + (y - 1)` (where x represnents the row input and y represents the column input) on line 84, we can input values for `x` and `y` such that `index` results to `-23`. One example of such input would be `x = -5` and `y=-4`.
+Using the index calculation `index = (x - 1) * 3 + (y - 1)` from `playerMove()` above, we can input values for `x` and `y` such that `index` results in `-23`. One example of such input would be `x = -5` and `y = -4`.
 
 By doing so, we write to the address `board[-23]`, or at the location of the variable `computer`, overwriting it to 'X'.
 
+```
+Enter row #(1-3): -5
+Enter column #(1-3): -4
+
+   |   |   
+---|---|---
+   | X |   
+---|---|---
+   |   |   
+```
+
+After entering these inputs, the computer writes `X` instead of `O`, confirming that the `computer` variable was successfully overwritten. By continuing this game, both the user and the computer will be playing `X`, leading to a guaranteed win.
+
 ## Remediation
-There should be a better check for user inputs rather than just the calculated index value. Instead, the program can check that `row` and `column` are within the bounds [1, 3].
+The program should validate user input rather than relying solely on the calculated index value. It can instead check that `row` and `column` are within the range [1, 3].
