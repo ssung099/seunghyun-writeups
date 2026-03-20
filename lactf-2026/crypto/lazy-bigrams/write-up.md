@@ -1,7 +1,7 @@
 # lazy-bigrams
 
 ## Summary
-This challenge provides a Linux CLI program 
+This challenge provides a Linux CLI program that is used to encrypt the flag by applying NATO phonetic alphabet expansion twice before performing a random bigram substitution cipher. The vulnerability in this crytographic algorithm lies in the predictable structure introduced by the double phonetic expansion, which allows the known flag prefix 'lactf{' to reveal enough bigram mappings to recover the full flag.
 
 Artifacts:
 - `chall.py`: the encryption algorithm used to generate the ciphertext.
@@ -42,14 +42,14 @@ phonetic_mapping("bot") = BRAVOOSCARTANGOX
 
 After this transformation occurs twice on the plaintext, we use the key `sub_bigrams`, a randomly generated permutation of `bigrams` (an array of all two letter combinations of the alphabet) to perform a bigram substitution to get the final ciphertext.
 
-# Vulnerability
+## Vulnerability
 The main problem with this substitution encryption scheme is the use of `phonetic_mapping()` before the bigram substitution, which reveals a significant amount of information about the underlying plaintext bigram pairs.
 
 Before the bigram substitution is applied, each character in the plaintext is expanded into its corresponding NATO phonetic alphabet word. The scheme applies this mapping twice, greatly increasing the length of the plaintext and producing a highly structured and predictable sequence. 
 
 In this case, the flag format is partially known (lactf{), so expanding this prefix with phonetic_mapping() twice produces a large sequence of known plaintext characters. From this partially known plaintext, we can recover a significant amount of ciphertext-plaintext bigram mappings.
 
-# Exploitation
+## Exploitation
 By utilizing the `phonetic_mapping` function, provided from the challenge, we can perform `phonetic_mapping(phonetic_mapping("lactf{"))` to partially generate the plaintext before the bigram substitution step.
 
 ```python
@@ -132,7 +132,7 @@ For each character successfully appended to the known flag text, we update the `
 
 By repeating this process, we can eventually recover the full flag to solve the challenge.
 
-# Remediation
+## Remediation
 The primary weakness of this encryption scheme is the use of `phonetic_mapping`. The double phonetic mapping expansion expands the flag into an predictable sequence and reveals a lot about the bigram pairs even from the flag prefix "lactf{" alone.
 
 This issue can be mitigated by eliminating the phonetic mapping step entirely and directly applying the bigram substitution to the flag. Without the deterministic phonetic expansion, the plaintext would no longer contain large predictable sequences derived from the known flag prefix.
