@@ -5,27 +5,57 @@ Shellshock, also known as Backdoor, is a vulnerability in the GNU Bash shell tha
 
 Artifacts:
 - `script.sh`: the bash script that executes commands through maliciously crafted environment variables.
-- `vulnerable_bash`: the vulnerable version of bash compiled from source before the patch. To be used with `script.sh` to demonstrate the vulnerability.
+- `vulnerable_bash`: the vulnerable version (4.1) of bash compiled (in x86-64) from source before the patch. Used with `script.sh` to demonstrate the vulnerability.
 
 ## Context
-<!-- Write about Bash -->
+Bash supports exporting functions through environment variables that allows a Bash process to easily share command scripts with child bash processes. 
 
-Bash contains a "function export" through environment variables that allows one Bash process to easily share command scripts with other Bash process that it executes. When a new Bash process starts, it would scan for `() { ... }` and import the content of curly braces as function definitions. 
+When a new Bash process starts, it scans environment variables matching the function defintion pattern `() { ... }` and imports the content of curly braces. 
 
 ## Vulnerability
-The main vulnerability with versions of Bash up to 4.3 was that it parsed the input to end of the string rather than to the closing curly brace of a function definition assigned to an environment variable.
+In Bash versions up to 4.3, the main vulnerability was due to improper parsing of function definitions leading to unintended command execution.
 
-In bash-4.1, the `parse-string` function used the loop `while (*(bash_input.location.string))` which iterated until you reached a null byte `\0` in the string.
+Instead of stopping at the closing curly brace of a function definition, the `parse_and_execute` function continued parsing the entire string and treated trailing input as additional commands to execute as well.
 
-The injected command would also execute with the same privileges as the new bash process, which could cause severe impacts if possessing elevated privileges.
+```
+int parse_and_execute(...) {
+    ...
+    // Continues parsing until end of input string
+    while (*(bash_input.location.string)) {
+        ...
+        // Executes each parsed command
+        last_result = execute_command_internal(command, 0, NO_PIPE, NO_PIPE, bitmap);
+        ...
+    }
+    ...
+}
+```
+This would result in arbitrary command execution during shell initialization, which would execute before any other user code runs.
 
 ## Exploitation
-By utilizing the fact that `parse-string` continues to parse until the end of the string, you can exploit this vulnerability by appending commands to the end of the function definition using `;` as a command separator. Bash allows the usage of `;` to separate multiple commands written in one line. 
+The vulnerability can be exploited by appending commands to the end of the function definition using `;` as a command separator.
 
-Consider the following environment variable `x = () { :; }; echo Hello`.
-The new Bash process would recognize this as a function definition since it has the format `() { ... }` and try to parse it.
-It would add the contents within the braces as a function definition. In this case, `:;` is a minimal function that does not do anything so it would not execute anything.
-Since there are still characters left in the string, it would continue to parse and execute any subsequent commands. Therefore, it would execute `echo Hello` as an immediate shell command the moment it starts up.
+Consider the following environment variable `env x1='() { :; }; echo VULNERABLE' $BASH_BIN -c 'echo Hello'`. The new Bash process would recognize this as a function definition since it contains the format `() { ... }` and try to parse it.
+
+This would add the contents within the braces as a function. Since there are still characters left in the string, it would continue to parse and execute `echo VULNERABLE` in the new Bash process that `$BASH_BIN -c 'echo Hello'` spawned. 
+
+Upon initialization, the new Bash shell will first print "VULNERABLE" and then process the command `echo Hello`.
+```
+$ env x1='() { :; }; echo VULNERABLE' ./vulnerable-bash -c 'echo Hello'
+VULNERABLE
+Hello
+```
+
+**Note**: Certain malformed environment variables caused Bash to crash after or instead of executing the injected command. This could trigger additional parser bugs, such as out-of-bounds access, that could lead to segmentation faults.
+
+```
+$ env x2='() { :; }; touch tmp' ./vulnerable-bash -c 'echo Test'
+Segmentation fault (core dumped)
+```
 
 ## Remediation
-The remediation for this vulnerability was to ensure that only one command was to be parsed and executed. Starting from Bash 4.4, flags `SEVAL_FUNCDEF` and `SEVAL_ONECMD` were added. `SEVAL_FUNCDEF` ensured that the input only took the function definition form `() { ... }`. In addition, `SEVAL_ONECMD` ensured that only one syntactic unit was processed, eliminating the possibility of chain commands with `;`.
+The remediation for this vulnerability was to properly handle function export parsing and command execution. 
+
+Patched versions of Bash introduced flags `SEVAL_FUNCDEF` and `SEVAL_ONECMD` were added to resolve these vulnerabilities. 
+- `SEVAL_FUNCDEF` ensured that the input only took the function definition form `() { ... }` and rejected other input formats.
+- `SEVAL_ONECMD` ensured that only one command was processed, eliminating the possibility of chain commands with `;`.
